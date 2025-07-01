@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_data_plugin/shared_data_plugin.dart';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_data_plugin/shared_data_plugin.g.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,12 +14,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Key Inspections',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'Shared Data Demo'),
     );
   }
 }
@@ -33,18 +34,43 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  Future<File?> getSharedFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final plugin = SharedDataPlugin.instance;
-    final file = await plugin.getFile(
-      'shared_file.png',
-      '${dir.path}/shared_file.png',
-      authority: 'com.example.kansuke_app.provider',
-    );
-    Logger.log('File path: ${file?.path}');
-    Logger.log('File exists: ${file != null && await file.exists()}');
-    Logger.log('File length: ${file != null ? await file.length() : 0}');
-    return file;
+  final shareData = ValueNotifier<List<ShareData>>([]);
+
+  @override
+  void initState() {
+    super.initState();
+    getSharedData();
+  }
+
+  Future<void> getSharedData() async {
+    final response = await SharedDataPlugin.instance.receiveAll();
+    shareData.value = response;
+  }
+
+  Future<void> shareImage() async {
+    try {
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+
+      await SharedDataPlugin.instance.shareData(
+        filePath: picked.path,
+        targetPackage: 'com.example.kansuke_app',
+        metadata: {
+          'text': 'Hello, world!',
+          'session': '1234567890',
+          'userName': 'John Doe',
+          'userAvatar': 'https://via.placeholder.com/150',
+          'userEmail': 'john.doe@example.com',
+          'userPhone': '1234567890',
+          'userAddress': '123 Main St, Anytown, USA',
+          'userCity': 'Anytown',
+          'userState': 'CA',
+        },
+      );
+      getSharedData();
+    } catch (e) {
+      Logger.log(e.toString());
+    }
   }
 
   @override
@@ -52,36 +78,89 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        title: Text('Key Inspection'),
       ),
-      body: Center(
-        child: FutureBuilder<File?>(
-          future: getSharedFile(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const CircularProgressIndicator();
-            }
-            if (snapshot.data == null) {
-              return const Text('No file');
-            }
-            return Column(
-              mainAxisSize: MainAxisSize.min,
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                Text('File path: ${snapshot.data!.path}'),
-                Text(
-                  'Exists: ${snapshot.data != null && snapshot.data!.existsSync()}',
-                ),
-                Text(
-                  'Length: ${snapshot.data != null ? snapshot.data!.lengthSync() : 0}',
-                ),
                 Expanded(
-                  child: Image.file(snapshot.data!),
+                  child: ElevatedButton(
+                    onPressed: getSharedData,
+                    child: const Text('Get'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: shareImage,
+                    child: const Text('Share'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await SharedDataPlugin.instance.clearAll();
+                      getSharedData();
+                    },
+                    child: const Text('Clear'),
+                  ),
                 ),
               ],
-            );
-          },
+            ),
+            Expanded(
+              child: ValueListenableBuilder(
+                valueListenable: shareData,
+                builder: (BuildContext context, List<ShareData> value,
+                    Widget? child) {
+                  return ListView.builder(
+                    itemCount: value.length,
+                    itemBuilder: (context, index) {
+                      return ListTile(
+                        title: Text(value[index].mimeType ?? ''),
+                        subtitle: Text(
+                          value[index].metadata?.toString() ?? '',
+                        ),
+                        trailing: ImageItem(shareData: value[index]),
+                      );
+                    },
+                  );
+                },
+              ),
+            )
+          ],
         ),
       ),
     );
   }
+}
+
+class ImageItem extends StatelessWidget {
+  const ImageItem({super.key, required this.shareData});
+  final ShareData shareData;
+  @override
+  Widget build(BuildContext context) {
+    if (shareData.filePath == null) return const SizedBox.shrink();
+    if (shareData.filePath!.isImage) {
+      return SizedBox(
+        width: 60,
+        height: 60,
+        child: Image.file(
+          File(shareData.filePath!),
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+extension on String? {
+  bool get isImage => ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(
+        this?.split('.').last,
+      );
 }
