@@ -1,8 +1,5 @@
 import 'dart:developer' as dev;
 
-import 'dart:io';
-import 'package:encrypt/encrypt.dart' as encrypt;
-
 import 'shared_data_plugin.g.dart';
 
 class Logger {
@@ -12,114 +9,64 @@ class Logger {
 }
 
 // Lớp ngoại lệ tùy chỉnh
-class SharedDataException implements Exception {
-  final String message;
-  SharedDataException(this.message);
-}
-
 class SharedDataPlugin {
   static final SharedDataPlugin _instance = SharedDataPlugin._();
   static SharedDataPlugin get instance => _instance;
 
   SharedDataPlugin._();
 
-  final SharedDataApi _api = SharedDataApi();
-  // Cấu hình mã hóa
-  final _key = encrypt.Key.fromUtf8('your-32-char-key-here!!!!!!!');
-  final _iv = encrypt.IV.fromLength(16);
-  late final encrypt.Encrypter _encrypter;
+  static final ShareDataApi _api = ShareDataApi();
 
-  SharedDataPlugin() {
-    _encrypter = encrypt.Encrypter(encrypt.AES(_key));
+  /// Unified share function for both text and files
+  Future<ShareResult> shareData({
+    String? filePath,
+    Map<String?, String?>? metadata,
+    String? targetPackage,
+  }) async {
+    return await _api.shareData(
+      data: ShareData(
+        filePath: filePath,
+        mimeType: getMimeType(filePath),
+        metadata: metadata,
+      ),
+      targetPackage: targetPackage,
+    );
   }
 
-  /// Lưu dữ liệu dạng chuỗi (ví dụ: session token, JSON)
-  Future<void> saveData(String key, String data, {bool encrypt = true}) async {
-    try {
-      final request = SharedDataRequest()..key = key;
-      final dataToSave = encrypt ? _encryptData(data) : data;
-      await _api.saveSharedData(request, dataToSave, null);
-    } catch (e) {
-      throw SharedDataException('Failed to save data: $e');
-    }
+  /// Receive all shared data
+  Future<List<ShareData>> receiveAll() async {
+    return await _api.receiveAll();
   }
 
-  /// Lưu file
-  Future<void> saveFile(String key, File file, {String? authority}) async {
-    try {
-      final request = SharedDataRequest(
-        key: key,
-        authority: authority,
-      );
-      final fileContent = await file.readAsBytes();
-      await _api.saveSharedData(
-        request,
-        null,
-        fileContent,
-      );
-    } catch (e) {
-      throw SharedDataException('Failed to save file: $e');
-    }
+  /// Clear all shared data
+  Future<void> clearAll() async {
+    await _api.clearAll();
   }
 
-  /// Đọc dữ liệu dạng chuỗi
-  Future<String?> getData(String key, {bool decrypt = true}) async {
-    try {
-      final request = SharedDataRequest()..key = key;
-      final response = await _api.getSharedData(request);
-      if (response.data == null) return null;
-      return decrypt ? _decryptData(response.data!) : response.data;
-    } catch (e) {
-      throw SharedDataException('Failed to get data: $e');
-    }
+  /// Delete specific data by ID
+  Future<void> delete(String id) async {
+    await _api.delete(id);
   }
+}
 
-  /// Đọc file và lưu vào đường dẫn cục bộ
-  Future<File?> getFile(String key, String destinationPath,
-      {String? authority}) async {
-    try {
-      final request = SharedDataRequest(
-        key: key,
-        authority: authority,
-      );
-      final response = await _api.getSharedData(request);
-      if (response.fileContent == null) return null;
-      final file = File(destinationPath);
-      await file.writeAsBytes(response.fileContent!);
-      return file;
-    } catch (e) {
-      throw SharedDataException('Failed to get file: $e');
-    }
-  }
-
-  /// Xóa dữ liệu hoặc file
-  Future<void> deleteData(String key) async {
-    try {
-      final request = SharedDataRequest()..key = key;
-      await _api.deleteSharedData(request);
-    } catch (e) {
-      throw SharedDataException('Failed to delete data: $e');
-    }
-  }
-
-  /// Kiểm tra dữ liệu/file có tồn tại
-  Future<bool> checkDataExists(String key) async {
-    try {
-      final request = SharedDataRequest()..key = key;
-      final response = await _api.checkSharedData(request);
-      return response.exists ?? false;
-    } catch (e) {
-      throw SharedDataException('Failed to check data: $e');
-    }
-  }
-
-  /// Mã hóa dữ liệu
-  String _encryptData(String data) {
-    return _encrypter.encrypt(data, iv: _iv).base64;
-  }
-
-  /// Giải mã dữ liệu
-  String _decryptData(String encrypted) {
-    return _encrypter.decrypt64(encrypted, iv: _iv);
-  }
+String getMimeType(String? filePath) {
+  if (filePath == null) return '';
+  final extension = filePath.split('.').last;
+  return switch (extension) {
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'gif' => 'image/gif',
+    'mp4' => 'video/mp4',
+    'mp3' => 'audio/mpeg',
+    'doc' => 'application/msword',
+    'docx' =>
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls' => 'application/vnd.ms-excel',
+    'xlsx' =>
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt' => 'application/vnd.ms-powerpoint',
+    'pptx' =>
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    _ => 'application/octet-stream',
+  };
 }

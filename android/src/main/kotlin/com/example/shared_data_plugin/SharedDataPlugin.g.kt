@@ -13,7 +13,7 @@ import io.flutter.plugin.common.StandardMethodCodec
 import io.flutter.plugin.common.StandardMessageCodec
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
-private object SharedDataApiPigeonUtils {
+private object SharedDataPluginPigeonUtils {
 
   fun wrapResult(result: Any?): List<Any?> {
     return listOf(result)
@@ -79,80 +79,86 @@ class FlutterError (
 ) : Throwable()
 
 /** Generated class from Pigeon that represents data sent in messages. */
-data class SharedDataRequest (
-  val authority: String? = null,
-  val key: String? = null
+data class ShareData (
+  val id: String? = null,
+  val filePath: String? = null,
+  val mimeType: String? = null,
+  val metadata: Map<String?, String?>? = null
 )
  {
   companion object {
-    fun fromList(pigeonVar_list: List<Any?>): SharedDataRequest {
-      val authority = pigeonVar_list[0] as String?
-      val key = pigeonVar_list[1] as String?
-      return SharedDataRequest(authority, key)
+    fun fromList(pigeonVar_list: List<Any?>): ShareData {
+      val id = pigeonVar_list[0] as String?
+      val filePath = pigeonVar_list[1] as String?
+      val mimeType = pigeonVar_list[2] as String?
+      val metadata = pigeonVar_list[3] as Map<String?, String?>?
+      return ShareData(id, filePath, mimeType, metadata)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
-      authority,
-      key,
+      id,
+      filePath,
+      mimeType,
+      metadata,
     )
   }
   override fun equals(other: Any?): Boolean {
-    if (other !is SharedDataRequest) {
+    if (other !is ShareData) {
       return false
     }
     if (this === other) {
       return true
     }
-    return SharedDataApiPigeonUtils.deepEquals(toList(), other.toList())  }
+    return SharedDataPluginPigeonUtils.deepEquals(toList(), other.toList())  }
 
   override fun hashCode(): Int = toList().hashCode()
 }
 
 /** Generated class from Pigeon that represents data sent in messages. */
-data class SharedDataResponse (
-  val data: String? = null,
-  val fileContent: ByteArray? = null,
-  val exists: Boolean? = null
+data class ShareResult (
+  val success: Boolean? = null,
+  val errorMessage: String? = null,
+  val sharedDataId: String? = null
 )
  {
   companion object {
-    fun fromList(pigeonVar_list: List<Any?>): SharedDataResponse {
-      val data = pigeonVar_list[0] as String?
-      val fileContent = pigeonVar_list[1] as ByteArray?
-      val exists = pigeonVar_list[2] as Boolean?
-      return SharedDataResponse(data, fileContent, exists)
+    fun fromList(pigeonVar_list: List<Any?>): ShareResult {
+      val success = pigeonVar_list[0] as Boolean?
+      val errorMessage = pigeonVar_list[1] as String?
+      val sharedDataId = pigeonVar_list[2] as String?
+      return ShareResult(success, errorMessage, sharedDataId)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
-      data,
-      fileContent,
-      exists,
+      success,
+      errorMessage,
+      sharedDataId,
     )
   }
   override fun equals(other: Any?): Boolean {
-    if (other !is SharedDataResponse) {
+    if (other !is ShareResult) {
       return false
     }
     if (this === other) {
       return true
     }
-    return SharedDataApiPigeonUtils.deepEquals(toList(), other.toList())  }
+    return SharedDataPluginPigeonUtils.deepEquals(toList(), other.toList())  }
 
   override fun hashCode(): Int = toList().hashCode()
 }
-private open class SharedDataApiPigeonCodec : StandardMessageCodec() {
+private open class SharedDataPluginPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
       129.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SharedDataRequest.fromList(it)
+          ShareData.fromList(it)
         }
       }
       130.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SharedDataResponse.fromList(it)
+          ShareResult.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -160,11 +166,11 @@ private open class SharedDataApiPigeonCodec : StandardMessageCodec() {
   }
   override fun writeValue(stream: ByteArrayOutputStream, value: Any?)   {
     when (value) {
-      is SharedDataRequest -> {
+      is ShareData -> {
         stream.write(129)
         writeValue(stream, value.toList())
       }
-      is SharedDataResponse -> {
+      is ShareResult -> {
         stream.write(130)
         writeValue(stream, value.toList())
       }
@@ -174,51 +180,33 @@ private open class SharedDataApiPigeonCodec : StandardMessageCodec() {
 }
 
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
-interface SharedDataApi {
-  fun getSharedData(request: SharedDataRequest): SharedDataResponse
-  fun saveSharedData(request: SharedDataRequest, data: String?, fileContent: ByteArray?)
-  fun deleteSharedData(request: SharedDataRequest)
-  fun checkSharedData(request: SharedDataRequest): SharedDataResponse
+interface ShareDataApi {
+  fun configureAppGroup(appGroupId: String)
+  fun shareData(data: ShareData, targetPackage: String?): ShareResult
+  fun receiveAll(): List<ShareData>
+  fun clearAll()
+  fun delete(id: String)
 
   companion object {
-    /** The codec used by SharedDataApi. */
+    /** The codec used by ShareDataApi. */
     val codec: MessageCodec<Any?> by lazy {
-      SharedDataApiPigeonCodec()
+      SharedDataPluginPigeonCodec()
     }
-    /** Sets up an instance of `SharedDataApi` to handle messages through the `binaryMessenger`. */
+    /** Sets up an instance of `ShareDataApi` to handle messages through the `binaryMessenger`. */
     @JvmOverloads
-    fun setUp(binaryMessenger: BinaryMessenger, api: SharedDataApi?, messageChannelSuffix: String = "") {
+    fun setUp(binaryMessenger: BinaryMessenger, api: ShareDataApi?, messageChannelSuffix: String = "") {
       val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
       run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.SharedDataApi.getSharedData$separatedMessageChannelSuffix", codec)
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.ShareDataApi.configureAppGroup$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
-            val requestArg = args[0] as SharedDataRequest
+            val appGroupIdArg = args[0] as String
             val wrapped: List<Any?> = try {
-              listOf(api.getSharedData(requestArg))
-            } catch (exception: Throwable) {
-              SharedDataApiPigeonUtils.wrapError(exception)
-            }
-            reply.reply(wrapped)
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.SharedDataApi.saveSharedData$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { message, reply ->
-            val args = message as List<Any?>
-            val requestArg = args[0] as SharedDataRequest
-            val dataArg = args[1] as String?
-            val fileContentArg = args[2] as ByteArray?
-            val wrapped: List<Any?> = try {
-              api.saveSharedData(requestArg, dataArg, fileContentArg)
+              api.configureAppGroup(appGroupIdArg)
               listOf(null)
             } catch (exception: Throwable) {
-              SharedDataApiPigeonUtils.wrapError(exception)
+              SharedDataPluginPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }
@@ -227,16 +215,47 @@ interface SharedDataApi {
         }
       }
       run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.SharedDataApi.deleteSharedData$separatedMessageChannelSuffix", codec)
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.ShareDataApi.shareData$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
-            val requestArg = args[0] as SharedDataRequest
+            val dataArg = args[0] as ShareData
+            val targetPackageArg = args[1] as String?
             val wrapped: List<Any?> = try {
-              api.deleteSharedData(requestArg)
+              listOf(api.shareData(dataArg, targetPackageArg))
+            } catch (exception: Throwable) {
+              SharedDataPluginPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.ShareDataApi.receiveAll$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.receiveAll())
+            } catch (exception: Throwable) {
+              SharedDataPluginPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.ShareDataApi.clearAll$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.clearAll()
               listOf(null)
             } catch (exception: Throwable) {
-              SharedDataApiPigeonUtils.wrapError(exception)
+              SharedDataPluginPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }
@@ -245,15 +264,16 @@ interface SharedDataApi {
         }
       }
       run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.SharedDataApi.checkSharedData$separatedMessageChannelSuffix", codec)
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.shared_data_plugin.ShareDataApi.delete$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
-            val requestArg = args[0] as SharedDataRequest
+            val idArg = args[0] as String
             val wrapped: List<Any?> = try {
-              listOf(api.checkSharedData(requestArg))
+              api.delete(idArg)
+              listOf(null)
             } catch (exception: Throwable) {
-              SharedDataApiPigeonUtils.wrapError(exception)
+              SharedDataPluginPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }

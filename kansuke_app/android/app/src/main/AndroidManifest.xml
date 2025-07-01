@@ -4,6 +4,18 @@
         android:label="kansuke_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+          <!-- FileProvider for sharing files - using plugin's authority to avoid conflicts -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -25,6 +37,14 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+              <!-- Handle incoming shared files -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
@@ -32,21 +52,9 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        
 
-        <provider
-            android:name=".SharedDataProvider"
-            android:authorities="com.example.kansuke_app.provider"
-            android:exported="true"
-            android:grantUriPermissions="true"
-            android:readPermission="com.example.kansuke_app.READ_PERMISSION"
-            android:writePermission="com.example.kansuke_app.WRITE_PERMISSION"/>
     </application>
-        <permission
-            android:name="com.example.kansuke_app.READ_PERMISSION"
-            android:protectionLevel="dangerous" />
-        <permission
-            android:name="com.example.kansuke_app.WRITE_PERMISSION"
-            android:protectionLevel="dangerous" />
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.

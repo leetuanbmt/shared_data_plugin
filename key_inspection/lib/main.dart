@@ -33,13 +33,27 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   final shareData = ValueNotifier<List<ShareData>>([]);
 
   @override
   void initState() {
     super.initState();
     getSharedData();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      getSharedData();
+    }
   }
 
   Future<void> getSharedData() async {
@@ -115,23 +129,40 @@ class _MyHomePageState extends State<MyHomePage> {
             Expanded(
               child: ValueListenableBuilder(
                 valueListenable: shareData,
-                builder: (BuildContext context, List<ShareData> value,
-                    Widget? child) {
+                builder: (
+                  BuildContext context,
+                  List<ShareData> value,
+                  Widget? child,
+                ) {
                   return ListView.builder(
                     itemCount: value.length,
                     itemBuilder: (context, index) {
                       return ListTile(
-                        title: Text(value[index].mimeType ?? ''),
+                        leading: ImageItem(shareData: value[index]),
+                        title: Text(
+                          value[index].id ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         subtitle: Text(
                           value[index].metadata?.toString() ?? '',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        trailing: ImageItem(shareData: value[index]),
+                        trailing: IconButton(
+                          color: Colors.red,
+                          onPressed: () {
+                            SharedDataPlugin.instance.delete(value[index].id!);
+                            getSharedData();
+                          },
+                          icon: const Icon(Icons.delete),
+                        ),
                       );
                     },
                   );
                 },
               ),
-            )
+            ),
           ],
         ),
       ),

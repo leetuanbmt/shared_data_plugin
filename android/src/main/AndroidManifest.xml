@@ -1,3 +1,43 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.example.shared_data_plugin">
+
+  <permission
+    android:name="com.example.shared_data_plugin.PERMISSION_SIGNATURE"
+    android:protectionLevel="signature"/>
+
+  <application>
+    <provider
+      android:name="com.example.shared_data_plugin.SharedDataProvider"
+      android:authorities="${applicationId}.shared_data_provider"
+      android:exported="true"
+      android:permission="com.example.shared_data_plugin.PERMISSION_SIGNATURE"
+      android:grantUriPermissions="true"/>
+      
+    <!-- FileProvider for sharing files -->
+    <provider
+      android:name="androidx.core.content.FileProvider"
+      android:authorities="${applicationId}.fileprovider"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/file_paths" />
+    </provider>
+
+
+        
+    <!-- Broadcast receiver for data synchronization -->
+    <!-- <receiver
+      android:name="com.example.shared_data_plugin.SharedDataReceiver"
+      android:exported="true"
+      android:permission="com.example.shared_data_plugin.PERMISSION_SIGNATURE">
+      <intent-filter>
+        <action android:name="com.example.shared_data_plugin.ACTION_CLEAR_SHARED_DATA" />
+      </intent-filter>
+    </receiver> -->
+
+
+
+  </application>
+
 </manifest>

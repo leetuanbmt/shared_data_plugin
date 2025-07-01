@@ -29,38 +29,48 @@ bool _deepEquals(Object? a, Object? b) {
 }
 
 
-class SharedDataRequest {
-  SharedDataRequest({
-    this.authority,
-    this.key,
+class ShareData {
+  ShareData({
+    this.id,
+    this.filePath,
+    this.mimeType,
+    this.metadata,
   });
 
-  String? authority;
+  String? id;
 
-  String? key;
+  String? filePath;
+
+  String? mimeType;
+
+  Map<String?, String?>? metadata;
 
   List<Object?> _toList() {
     return <Object?>[
-      authority,
-      key,
+      id,
+      filePath,
+      mimeType,
+      metadata,
     ];
   }
 
   Object encode() {
     return _toList();  }
 
-  static SharedDataRequest decode(Object result) {
+  static ShareData decode(Object result) {
     result as List<Object?>;
-    return SharedDataRequest(
-      authority: result[0] as String?,
-      key: result[1] as String?,
+    return ShareData(
+      id: result[0] as String?,
+      filePath: result[1] as String?,
+      mimeType: result[2] as String?,
+      metadata: (result[3] as Map<Object?, Object?>?)?.cast<String?, String?>(),
     );
   }
 
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! SharedDataRequest || other.runtimeType != runtimeType) {
+    if (other is! ShareData || other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
@@ -75,43 +85,43 @@ class SharedDataRequest {
 ;
 }
 
-class SharedDataResponse {
-  SharedDataResponse({
-    this.data,
-    this.fileContent,
-    this.exists,
+class ShareResult {
+  ShareResult({
+    this.success,
+    this.errorMessage,
+    this.sharedDataId,
   });
 
-  String? data;
+  bool? success;
 
-  Uint8List? fileContent;
+  String? errorMessage;
 
-  bool? exists;
+  String? sharedDataId;
 
   List<Object?> _toList() {
     return <Object?>[
-      data,
-      fileContent,
-      exists,
+      success,
+      errorMessage,
+      sharedDataId,
     ];
   }
 
   Object encode() {
     return _toList();  }
 
-  static SharedDataResponse decode(Object result) {
+  static ShareResult decode(Object result) {
     result as List<Object?>;
-    return SharedDataResponse(
-      data: result[0] as String?,
-      fileContent: result[1] as Uint8List?,
-      exists: result[2] as bool?,
+    return ShareResult(
+      success: result[0] as bool?,
+      errorMessage: result[1] as String?,
+      sharedDataId: result[2] as String?,
     );
   }
 
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! SharedDataResponse || other.runtimeType != runtimeType) {
+    if (other is! ShareResult || other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
@@ -134,10 +144,10 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    }    else if (value is SharedDataRequest) {
+    }    else if (value is ShareData) {
       buffer.putUint8(129);
       writeValue(buffer, value.encode());
-    }    else if (value is SharedDataResponse) {
+    }    else if (value is ShareResult) {
       buffer.putUint8(130);
       writeValue(buffer, value.encode());
     } else {
@@ -149,20 +159,20 @@ class _PigeonCodec extends StandardMessageCodec {
   Object? readValueOfType(int type, ReadBuffer buffer) {
     switch (type) {
       case 129: 
-        return SharedDataRequest.decode(readValue(buffer)!);
+        return ShareData.decode(readValue(buffer)!);
       case 130: 
-        return SharedDataResponse.decode(readValue(buffer)!);
+        return ShareResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
   }
 }
 
-class SharedDataApi {
-  /// Constructor for [SharedDataApi].  The [binaryMessenger] named argument is
+class ShareDataApi {
+  /// Constructor for [ShareDataApi].  The [binaryMessenger] named argument is
   /// available for dependency injection.  If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  SharedDataApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+  ShareDataApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
       : pigeonVar_binaryMessenger = binaryMessenger,
         pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
@@ -171,14 +181,37 @@ class SharedDataApi {
 
   final String pigeonVar_messageChannelSuffix;
 
-  Future<SharedDataResponse> getSharedData(SharedDataRequest request) async {
-    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.SharedDataApi.getSharedData$pigeonVar_messageChannelSuffix';
+  Future<void> configureAppGroup({required String appGroupId}) async {
+    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.ShareDataApi.configureAppGroup$pigeonVar_messageChannelSuffix';
     final BasicMessageChannel<Object?> pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[appGroupId]);
+    final List<Object?>? pigeonVar_replyList =
+        await pigeonVar_sendFuture as List<Object?>?;
+    if (pigeonVar_replyList == null) {
+      throw _createConnectionError(pigeonVar_channelName);
+    } else if (pigeonVar_replyList.length > 1) {
+      throw PlatformException(
+        code: pigeonVar_replyList[0]! as String,
+        message: pigeonVar_replyList[1] as String?,
+        details: pigeonVar_replyList[2],
+      );
+    } else {
+      return;
+    }
+  }
+
+  Future<ShareResult> shareData({required ShareData data, String? targetPackage}) async {
+    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.ShareDataApi.shareData$pigeonVar_messageChannelSuffix';
+    final BasicMessageChannel<Object?> pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[data, targetPackage]);
     final List<Object?>? pigeonVar_replyList =
         await pigeonVar_sendFuture as List<Object?>?;
     if (pigeonVar_replyList == null) {
@@ -195,64 +228,18 @@ class SharedDataApi {
         message: 'Host platform returned null value for non-null return value.',
       );
     } else {
-      return (pigeonVar_replyList[0] as SharedDataResponse?)!;
+      return (pigeonVar_replyList[0] as ShareResult?)!;
     }
   }
 
-  Future<void> saveSharedData(SharedDataRequest request, String? data, Uint8List? fileContent) async {
-    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.SharedDataApi.saveSharedData$pigeonVar_messageChannelSuffix';
+  Future<List<ShareData>> receiveAll() async {
+    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.ShareDataApi.receiveAll$pigeonVar_messageChannelSuffix';
     final BasicMessageChannel<Object?> pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request, data, fileContent]);
-    final List<Object?>? pigeonVar_replyList =
-        await pigeonVar_sendFuture as List<Object?>?;
-    if (pigeonVar_replyList == null) {
-      throw _createConnectionError(pigeonVar_channelName);
-    } else if (pigeonVar_replyList.length > 1) {
-      throw PlatformException(
-        code: pigeonVar_replyList[0]! as String,
-        message: pigeonVar_replyList[1] as String?,
-        details: pigeonVar_replyList[2],
-      );
-    } else {
-      return;
-    }
-  }
-
-  Future<void> deleteSharedData(SharedDataRequest request) async {
-    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.SharedDataApi.deleteSharedData$pigeonVar_messageChannelSuffix';
-    final BasicMessageChannel<Object?> pigeonVar_channel = BasicMessageChannel<Object?>(
-      pigeonVar_channelName,
-      pigeonChannelCodec,
-      binaryMessenger: pigeonVar_binaryMessenger,
-    );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
-    final List<Object?>? pigeonVar_replyList =
-        await pigeonVar_sendFuture as List<Object?>?;
-    if (pigeonVar_replyList == null) {
-      throw _createConnectionError(pigeonVar_channelName);
-    } else if (pigeonVar_replyList.length > 1) {
-      throw PlatformException(
-        code: pigeonVar_replyList[0]! as String,
-        message: pigeonVar_replyList[1] as String?,
-        details: pigeonVar_replyList[2],
-      );
-    } else {
-      return;
-    }
-  }
-
-  Future<SharedDataResponse> checkSharedData(SharedDataRequest request) async {
-    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.SharedDataApi.checkSharedData$pigeonVar_messageChannelSuffix';
-    final BasicMessageChannel<Object?> pigeonVar_channel = BasicMessageChannel<Object?>(
-      pigeonVar_channelName,
-      pigeonChannelCodec,
-      binaryMessenger: pigeonVar_binaryMessenger,
-    );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
     final List<Object?>? pigeonVar_replyList =
         await pigeonVar_sendFuture as List<Object?>?;
     if (pigeonVar_replyList == null) {
@@ -269,7 +256,53 @@ class SharedDataApi {
         message: 'Host platform returned null value for non-null return value.',
       );
     } else {
-      return (pigeonVar_replyList[0] as SharedDataResponse?)!;
+      return (pigeonVar_replyList[0] as List<Object?>?)!.cast<ShareData>();
+    }
+  }
+
+  Future<void> clearAll() async {
+    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.ShareDataApi.clearAll$pigeonVar_messageChannelSuffix';
+    final BasicMessageChannel<Object?> pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final List<Object?>? pigeonVar_replyList =
+        await pigeonVar_sendFuture as List<Object?>?;
+    if (pigeonVar_replyList == null) {
+      throw _createConnectionError(pigeonVar_channelName);
+    } else if (pigeonVar_replyList.length > 1) {
+      throw PlatformException(
+        code: pigeonVar_replyList[0]! as String,
+        message: pigeonVar_replyList[1] as String?,
+        details: pigeonVar_replyList[2],
+      );
+    } else {
+      return;
+    }
+  }
+
+  Future<void> delete(String id) async {
+    final String pigeonVar_channelName = 'dev.flutter.pigeon.shared_data_plugin.ShareDataApi.delete$pigeonVar_messageChannelSuffix';
+    final BasicMessageChannel<Object?> pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[id]);
+    final List<Object?>? pigeonVar_replyList =
+        await pigeonVar_sendFuture as List<Object?>?;
+    if (pigeonVar_replyList == null) {
+      throw _createConnectionError(pigeonVar_channelName);
+    } else if (pigeonVar_replyList.length > 1) {
+      throw PlatformException(
+        code: pigeonVar_replyList[0]! as String,
+        message: pigeonVar_replyList[1] as String?,
+        details: pigeonVar_replyList[2],
+      );
+    } else {
+      return;
     }
   }
 }

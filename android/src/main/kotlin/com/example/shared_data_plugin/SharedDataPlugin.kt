@@ -1,155 +1,303 @@
 package com.example.shared_data_plugin
 
-import android.content.ContentValues
+import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
-import io.flutter.embedding.engine.plugins.FlutterPlugin
-import java.io.ByteArrayOutputStream
+import android.provider.OpenableColumns
 import android.util.Log
+import androidx.core.content.FileProvider
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.MethodChannel.MethodCallHandler
+import io.flutter.plugin.common.MethodChannel.Result
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.util.*
+import org.json.JSONArray
+import org.json.JSONObject
 
-class SharedDataPlugin : FlutterPlugin, SharedDataApi {
+/** ShareDataPlugin */
+class SharedDataPlugin: FlutterPlugin, ActivityAware, ShareDataApi {
     private lateinit var context: Context
-
+    private var activity: Activity? = null
+    private var appGroupId: String = "com.kansuke.app.shared_data"
+    internal lateinit var storageManager: StorageManager
     companion object {
-        private const val AUTHORITY = "com.example.kansuke_app.provider"
-        private val DATA_URI = Uri.parse("content://$AUTHORITY/data")
-        private val FILE_URI = Uri.parse("content://$AUTHORITY/file")
+        var instance: SharedDataPlugin? = null
+        const val EXTRA_DATA_ID = "data_id"
+        const val EXTRA_OPERATION = "operation"
+        const val EXTRA_SHARED_DATA = "shared_data"
+        const val ACTION_CLEAR_SHARED_DATA = "com.kansuke.app.ACTION_CLEAR_SHARED_DATA"
     }
 
-    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        context = binding.applicationContext
-        SharedDataApi.setUp(binding.binaryMessenger, this)
+    override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
+        context = flutterPluginBinding.applicationContext
+        ShareDataApi.setUp(flutterPluginBinding.binaryMessenger, this)
+        storageManager = StorageManager(context, appGroupId)
+        instance = this
+        context.registerReceiver(dataUpdateReceiver, IntentFilter(ACTION_CLEAR_SHARED_DATA))
     }
 
-    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {}
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        // No need to do anything here as the channel is no longer used
+        activity = null
+        instance = null
 
-    private fun getDataUri(authority: String): Uri = Uri.parse("content://$authority/data")
-    private fun getFileUri(authority: String): Uri = Uri.parse("content://$authority/file")
+        context.unregisterReceiver(dataUpdateReceiver)
+    }
 
-    override fun getSharedData(request: SharedDataRequest): SharedDataResponse {
-        val authority = request.authority ?: AUTHORITY
-        val dataKey = request.key ?: run {
-            Log.d("SharedDataPlugin", "getSharedData: key is null")
-            return SharedDataResponse(exists = false)
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+        Log.d("ShareDataPlugin", "onAttachedToActivity: intent=${binding.activity.intent}")
+        if (binding.activity.intent != null && binding.activity.intent.action != Intent.ACTION_MAIN) {
+            handleIncomingIntent(binding.activity.intent)
         }
-        Log.d("SharedDataPlugin", "getSharedData: authority = $authority, key = $dataKey")
-        var data: String? = null
-        var fileContent: ByteArray? = null
-        // Lấy dữ liệu
-        context.contentResolver.query(
-            getDataUri(authority),
-            null,
-            "key = ?",
-            arrayOf(dataKey),
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                data = cursor.getString(cursor.getColumnIndexOrThrow("data"))
-                Log.d("SharedDataPlugin", "getSharedData: data found for key $dataKey")
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() { activity = null }
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) { 
+        activity = binding.activity
+     }
+
+
+
+
+       // Broadcast receiver for real-time data updates
+    private val dataUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d("ShareDataPlugin", "dataUpdateReceiver: intent=$intent")
+            when (intent?.action) {
+                ACTION_CLEAR_SHARED_DATA -> {
+                    val dataId = intent.getStringExtra(EXTRA_DATA_ID)
+                    val operation = intent.getStringExtra(EXTRA_OPERATION)
+                    Log.d("ShareDataPlugin", "Received data update: $operation for ID: $dataId")
+                    if(operation == "clear_all") {
+                        storageManager.clearAll()
+                    } else if(operation == "delete_item" && dataId != null) {
+                        storageManager.deleteData(dataId)
+                    }
+                    
+                }
+            }
+        }
+    }
+    override fun onDetachedFromActivity() { activity = null }
+
+    override fun configureAppGroup(appGroupId: String) {
+        this.appGroupId = appGroupId
+        storageManager = StorageManager(context, appGroupId)
+    }
+
+    override fun shareData(data: ShareData, targetPackage: String?): ShareResult {
+        Log.d("ShareDataPlugin", "shareData: data=$data, targetPackage=$targetPackage")
+        return try {
+            val finalData = ensureDataHasId(data)
+            if(targetPackage != null) {
+                Log.d("ShareDataPlugin", "shareData: sharing to target package $targetPackage")
+                shareToTargetPackage(finalData, targetPackage)
             } else {
-                Log.d("SharedDataPlugin", "getSharedData: no data for key $dataKey")
+                Log.d("ShareDataPlugin", "shareData: sharing via system intent")
+                storageManager.saveData(finalData)
+                ShareResult(true, null, finalData.id)
             }
-        } ?: Log.d("SharedDataPlugin", "getSharedData: query data cursor is null for key $dataKey")
-        // Lấy file
-        val fileUri = Uri.withAppendedPath(getFileUri(authority), dataKey)
-        try {
-            context.contentResolver.openInputStream(fileUri)?.use { input ->
-                val byteArrayOutputStream = ByteArrayOutputStream()
-                input.copyTo(byteArrayOutputStream)
-                fileContent = byteArrayOutputStream.toByteArray()
-                Log.d("SharedDataPlugin", "getSharedData: file found for key $dataKey, size = ${fileContent?.size}")
-            } ?: Log.d("SharedDataPlugin", "getSharedData: file not found for key $dataKey")
         } catch (e: Exception) {
-            Log.e("SharedDataPlugin", "getSharedData: error reading file for key $dataKey", e)
+            logError("SHARE_DATA_ERROR", e)
+            ShareResult(false, e.message, data.id)
         }
-        Log.d("SharedDataPlugin", "getSharedData: return data=${data != null}, fileContent=${fileContent != null}")
-        return SharedDataResponse(
-            data = data,
-            fileContent = fileContent,
-            exists = (data != null || fileContent != null)
-        )
     }
 
-    override fun saveSharedData(request: SharedDataRequest, data: String?, fileContent: ByteArray?) {
-        val authority = request.authority ?: AUTHORITY
-        val saveKey = request.key ?: run {
-            Log.d("SharedDataPlugin", "saveSharedData: key is null")
-            return
-        }
-        Log.d("SharedDataPlugin", "saveSharedData: authority = $authority, key = $saveKey, data = ${data != null}, fileContent = ${fileContent != null}")
+    override fun receiveAll(): List<ShareData> = storageManager.getAllData()
+
+    override fun clearAll() {
+        storageManager.clearAll()
+        clearAllSharedData(context, null, "clear_all")
+    }
+    override fun delete(id: String) {
+        storageManager.deleteData(id)
+        clearAllSharedData(context, id, "delete_item")
+    }
+
+
+    private fun clearAllSharedData(context: Context, dataId: String?, operation: String) {
+        val intent = Intent(ACTION_CLEAR_SHARED_DATA)
+        intent.putExtra(EXTRA_DATA_ID, dataId)
+        intent.putExtra(EXTRA_OPERATION, operation)
+        context.sendBroadcast(intent)
+    }
+
+
+     fun handleIncomingIntent(intent: Intent?) {
+        Log.d("ShareDataPlugin", "handleIncomingIntent: intent=$intent")
+        val data = storageManager.createShareDataFromIntent(intent)
         if (data != null) {
-            val values = ContentValues().apply {
-                put("key", saveKey)
-                put("data", data)
-            }
-            val uri = context.contentResolver.insert(getDataUri(authority), values)
-            Log.d("SharedDataPlugin", "saveSharedData: data inserted, uri = $uri")
+            Log.d("ShareDataPlugin", "handleIncomingIntent: saving data id=${data.id}")
+            storageManager.saveData(data)
+        } else {
+            Log.d("ShareDataPlugin", "handleIncomingIntent: no data extracted from intent")
         }
-        if (fileContent != null) {
-            val fileUri = Uri.withAppendedPath(getFileUri(authority), saveKey)
-            val values = ContentValues().apply {
-                put("key", saveKey)
-                put("fileContent", fileContent)
-            }
-            val uri = context.contentResolver.insert(fileUri, values)
-            Log.d("SharedDataPlugin", "saveSharedData: file inserted, uri = $uri")
-        }
-        Log.d("SharedDataPlugin", "saveSharedData: fileContent size = ${fileContent?.size}")
     }
 
-    override fun deleteSharedData(request: SharedDataRequest) {
-        val authority = request.authority ?: AUTHORITY
-        val deleteKey = request.key ?: run {
-            Log.d("SharedDataPlugin", "deleteSharedData: key is null")
-            return
-        }
-        Log.d("SharedDataPlugin", "deleteSharedData: authority = $authority, key = $deleteKey")
-        val dataRows = context.contentResolver.delete(
-            getDataUri(authority),
-            "key = ?",
-            arrayOf(deleteKey)
-        )
-        Log.d("SharedDataPlugin", "deleteSharedData: data rows deleted = $dataRows")
-        val fileRows = context.contentResolver.delete(
-            getFileUri(authority),
-            "key = ?",
-            arrayOf(deleteKey)
-        )
-        Log.d("SharedDataPlugin", "deleteSharedData: file rows deleted = $fileRows")
+    private fun ensureDataHasId(data: ShareData): ShareData =
+        if (data.id == null) data.copy(id = UUID.randomUUID().toString()) else data
+
+
+    private fun logError(tag: String, e: Exception) {
+        Log.e("ShareDataPlugin-$tag", e.message ?: "Unknown error", e)
     }
 
-    override fun checkSharedData(request: SharedDataRequest): SharedDataResponse {
-        val authority = request.authority ?: AUTHORITY
-        val checkKey = request.key ?: run {
-            Log.d("SharedDataPlugin", "checkSharedData: key is null")
-            return SharedDataResponse(exists = false)
-        }
-        Log.d("SharedDataPlugin", "checkSharedData: authority = $authority, key = $checkKey")
-        var exists = false
-        context.contentResolver.query(
-            getDataUri(authority),
-            null,
-            "key = ?",
-            arrayOf(checkKey),
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                exists = true
-                Log.d("SharedDataPlugin", "checkSharedData: data exists for key $checkKey")
+    // Định nghĩa lại các hàm chia sẻ intent
+    private fun buildShareIntent(data: ShareData): Pair<Intent, Boolean> {
+        val intent = Intent(Intent.ACTION_SEND)
+        var hasContent = false
+        try {
+            Log.d("ShareDataPlugin", "buildShareIntent: data=$data")
+            val metadataJson = if (data.metadata != null && data.metadata.isNotEmpty()) {
+                org.json.JSONObject(data.metadata).toString()
+            } else null
+
+            // Nếu có file: luôn truyền kèm metadata dạng JSON
+            if (data.filePath != null) {
+                val file = File(data.filePath!!)
+                if (file.exists()) {
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    intent.putExtra(Intent.EXTRA_STREAM, uri)
+                    if (!metadataJson.isNullOrEmpty()) {
+                        intent.putExtra(Intent.EXTRA_TEXT, metadataJson)
+                    }
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    intent.type = data.mimeType ?: data.metadata?.get("mimeType") ?: "application/octet-stream"
+                    hasContent = true
+                } else {
+                    Log.e("ShareDataPlugin", "buildShareIntent: file does not exist: ${data.filePath}")
+                }
+            } else if (!metadataJson.isNullOrEmpty()) {
+                // Nếu không có file, chỉ truyền metadata dạng JSON
+                intent.putExtra(Intent.EXTRA_TEXT, metadataJson)
+                intent.type = "application/json"
+                hasContent = true
             }
-        } ?: Log.d("SharedDataPlugin", "checkSharedData: query data cursor is null for key $checkKey")
-        if (!exists) {
-            val fileUri = Uri.withAppendedPath(getFileUri(authority), checkKey)
+            Log.d("ShareDataPlugin", "buildShareIntent: hasContent=$hasContent, intent=$intent")
+            return Pair(intent, hasContent)
+        } catch (e: Exception) {
+            Log.e("ShareDataPlugin", "buildShareIntent: Exception: ${e.message}", e)
+            return Pair(intent, false)
+        }
+    }
+
+
+    private fun isAppInstalled(targetPackage: String): Boolean {
+        val pm = context.packageManager
+         try {
+            pm.getApplicationInfo(targetPackage, 0)
+          return  true
+        } catch (e: Exception) {
+          return  false
+        }
+    }
+
+    // Hàm kiểm tra package đã cài, nếu chưa thì mở Google Play Store
+    private fun checkAndPromptInstallTargetApp(targetPackage: String): Boolean {
+        if (!isAppInstalled(targetPackage)) {
+            Log.e("ShareDataPlugin", "Target package $targetPackage is not installed")
             try {
-                context.contentResolver.openInputStream(fileUri)?.use {
-                    exists = true
-                    Log.d("SharedDataPlugin", "checkSharedData: file exists for key $checkKey")
-                } ?: Log.d("SharedDataPlugin", "checkSharedData: file not found for key $checkKey")
-            } catch (e: Exception) {
-                Log.e("SharedDataPlugin", "checkSharedData: error reading file for key $checkKey", e)
+                val playIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$targetPackage"))
+                playIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(playIntent)
+            } catch (ex: Exception) {
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$targetPackage"))
+                webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(webIntent)
             }
+            return false
         }
-        Log.d("SharedDataPlugin", "checkSharedData: exists = $exists")
-        return SharedDataResponse(exists = exists)
+        return true
+    }
+
+    private fun shareToTargetPackage(data: ShareData, targetPackage: String): ShareResult {
+        Log.d("ShareDataPlugin", "shareToTargetPackage: data=$data, targetPackage=$targetPackage")
+        return try {
+            // // Kiểm tra targetPackage đã cài chưa, nếu chưa thì mở Google Play
+            // if (!checkAndPromptInstallTargetApp(targetPackage)) {
+            //     return ShareResult(false, "Target app is not installed", data.id)
+            // }
+            val (intent, hasContent) = buildShareIntent(data)
+            if (!hasContent) {
+                Log.d("ShareDataPlugin", "shareToTargetPackage: no content to share")
+                return ShareResult(false, "No content to share", data.id)
+            }
+            intent.setPackage(targetPackage)
+            intent.putExtra("uid", data.id)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            storageManager.saveData(data)
+            Log.d("ShareDataPlugin", "shareToTargetPackage: shared successfully")
+            ShareResult(true, null, data.id)
+        } catch (e: Exception) {
+            logError("SHARE_TO_TARGET", e)
+            ShareResult(false, e.message, data.id)
+        }
+    }
+
+    private fun getMimeType(file: File): String {
+        return when (file.extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "pdf" -> "application/pdf"
+            "txt" -> "text/plain"
+            "json" -> "application/json"
+            "mp4" -> "video/mp4"
+            "mp3" -> "audio/mpeg"
+            "doc" -> "application/msword"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "xls" -> "application/vnd.ms-excel"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "ppt" -> "application/vnd.ms-powerpoint"
+            "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            else -> "application/octet-stream"
+        }
+    }
+
+}
+
+// ShareDataSerializer: Chuyển đổi giữa ShareData và JSON
+object ShareDataSerializer {
+    fun toJson(data: ShareData): String {
+        val map = mutableMapOf<String, Any?>()
+        data.id?.let { map["id"] = it }
+        data.filePath?.let { map["filePath"] = it }
+        data.mimeType?.let { map["mimeType"] = it }
+        data.metadata?.let { map["metadata"] = it }
+        return JSONObject(map).toString()
+    }
+    fun fromJson(json: String, id: String): ShareData? {
+        return try {
+            val jsonObject = JSONObject(json)
+            ShareData(
+                id = id,
+                filePath = jsonObject.optString("filePath").takeIf { it.isNotEmpty() },
+                mimeType = jsonObject.optString("mimeType").takeIf { it.isNotEmpty() },
+                metadata = jsonObject.optJSONObject("metadata")?.let { metadataObj ->
+                    val metadataMap = mutableMapOf<String?, String?>()
+                    val keys = metadataObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        metadataMap[key] = metadataObj.optString(key)
+                    }
+                    metadataMap as Map<String?, String?>?
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("ShareDataSerializer", "Error parsing JSON: ${e.message}")
+            null
+        }
     }
 }
+
